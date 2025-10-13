@@ -1,0 +1,58 @@
+{
+    "name": "@ynode/versionify",
+    "version": "0.0.0+410696.00c1d65",
+    "description": "Node.js Fastity plugin to expose the version of the current web app via RESTful API call.",
+    "main": "src/plugin.js",
+    "type": "module",
+    "license": "MIT",
+    "author": "Michael Welter <me@mikinho.com>",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/yammm/ynode-versionify.git"
+    },
+    "bugs": {
+        "url": "https://github.com/yammm/ynode-versionify/issues"
+    },
+    "homepage": "https://github.com/yammm/ynode-versionify#readme",
+    "keywords": [
+        "fastify",
+        "version",
+        "versionify"
+    ],
+    "engines": {
+        "node": ">=18"
+    },
+    "devDependencies": {
+        "@eslint/js": "^9.37.0",
+        "@eslint/json": "^0.13.2",
+        "@eslint/markdown": "^7.4.0",
+        "@mikinho/autover": "^2.0.1",
+        "eslint": "^9.37.0",
+        "eslint-config-prettier": "^10.1.8",
+        "eslint-plugin-prettier": "^5.5.4",
+        "globals": "^16.4.0",
+        "prettier": "^3.6.2"
+    },
+    "scripts": {
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix",
+        "ver:preview": "npx autover --no-amend --dry-run --short",
+        "ver:apply": "npx autover --guard-unchanged --short",
+        "test": "eslint --no-warn-ignored $(git diff --cached --name-only --diff-filter=ACMRTUXB | tr '\\n' ' ')",
+        "prepublishOnly": "npm test || true",
+        "postversion": "git push && git push --tags"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "files": [
+        "src",
+        "README.md",
+        "LICENSE"
+    ],
+    "peerDependency": {
+        "fastify": "^5.6.1"
+    }
+}
