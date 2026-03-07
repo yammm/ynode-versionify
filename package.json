@@ -57,6 +57,6 @@
         "fastify-plugin": "^5.1.0"
     },
     "peerDependencies": {
-        "fastify": "^5.6.1"
+        "fastify": "5.x"
     }
 }
