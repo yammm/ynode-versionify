@@ -30,6 +30,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 import { resolve } from "node:path";
 import process from "node:process";
 import { readFile } from "node:fs/promises";
+import fp from "fastify-plugin";
 
 /**
  * The main versionify plugin.
@@ -46,7 +47,7 @@ import { readFile } from "node:fs/promises";
  * // Register with a custom path
  * await fastify.register(versionify, { path: "/info" });
  */
-export default async function (fastify, options = {}) {
+export default fp(async function versionify(fastify, options = {}) {
     const defaultOptions = {
         path: "/version",
     };
@@ -98,4 +99,7 @@ export default async function (fastify, options = {}) {
 
         return await reply.status(406).send("Not Acceptable");
     });
-}
+}, {
+    fastify: "5.x",
+    name: "@ynode/versionify",
+});
