@@ -27,6 +27,7 @@
         "@eslint/json": "^0.13.2",
         "@eslint/markdown": "^7.4.0",
         "@mikinho/autover": "^2.0.1",
+        "auto-changelog": "^2.5.0",
         "eslint": "^9.37.0",
         "eslint-config-prettier": "^10.1.8",
         "eslint-plugin-prettier": "^5.5.4",
@@ -36,6 +37,7 @@
         "prettier": "^3.6.2"
     },
     "scripts": {
+        "changelog": "auto-changelog -p",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "lint": "eslint .",
