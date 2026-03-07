@@ -1,6 +1,6 @@
 {
     "name": "@ynode/versionify",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "description": "Node.js Fastity plugin to expose the version of the current web app via RESTful API call.",
     "main": "src/plugin.js",
     "type": "module",
