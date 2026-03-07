@@ -40,5 +40,7 @@ test("versionify plugin exposes version route with different accept headers", as
 test("versionify rejects duplicate registration", async () => {
     const app = Fastify();
     await app.register(versionify);
-    await assert.rejects(app.register(versionify), /has already been registered/);
+    await assert.rejects(async () => {
+        await app.register(versionify);
+    }, /has already been registered/);
 });
