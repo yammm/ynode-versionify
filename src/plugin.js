@@ -56,6 +56,8 @@ export default fp(async function versionify(fastify, options = {}) {
         path: "/version",
     };
 
+    const log = fastify.log.child({ name: "@ynode/versionify" });
+
     let pkg = options.pkg ?? fastify.pkg;
 
     // If pkg is not provided, try to load it from the project's package.json
@@ -64,7 +66,7 @@ export default fp(async function versionify(fastify, options = {}) {
             const pkgContents = await readFile(resolve(process.cwd(), "package.json"), "utf8");
             pkg = JSON.parse(pkgContents);
         } catch (err) {
-            fastify.log.error("versionify: Could not load package.json.", err);
+            log.error("versionify: Could not load package.json.", err);
             // Assign default values to prevent crashes if the file is missing
             pkg = { name: "unknown", version: "0.0.0" };
         }
