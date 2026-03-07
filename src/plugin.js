@@ -27,9 +27,10 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import process from "node:process";
-import { readFile } from "node:fs/promises";
+
 import fp from "fastify-plugin";
 
 /**
@@ -47,67 +48,68 @@ import fp from "fastify-plugin";
  * // Register with a custom path
  * await fastify.register(versionify, { path: "/info" });
  */
-export default fp(async function versionify(fastify, options = {}) {
-    if (typeof fastify.hasDecorator === "function" && fastify.hasDecorator("versionify")) {
-        throw new Error("@ynode/versionify has already been registered");
-    }
-
-    const defaultOptions = {
-        path: "/version",
-    };
-
-    const log = fastify.log.child({ name: "@ynode/versionify" });
-
-    let pkg = options.pkg ?? fastify.pkg;
-
-    // If pkg is not provided, try to load it from the project's package.json
-    if (!pkg) {
-        try {
-            const pkgContents = await readFile(resolve(process.cwd(), "package.json"), "utf8");
-            pkg = JSON.parse(pkgContents);
-        } catch (err) {
-            log.error("versionify: Could not load package.json.", err);
-            // Assign default values to prevent crashes if the file is missing
-            pkg = { name: "unknown", version: "0.0.0" };
-        }
-    }
-
-    const finalOptions = { ...defaultOptions, ...options };
-
-    fastify.get(finalOptions.path, async (req, reply) => {
-        const accept = req.headers.accept;
-
-        if (accept.includes("application/json")) {
-            return await reply
-                .header("Content-Type", "application/json")
-                .status(200)
-                .send({ name: pkg.name, version: pkg.version });
+export default fp(
+    async function versionify(fastify, options = {}) {
+        if (typeof fastify.hasDecorator === "function" && fastify.hasDecorator("versionify")) {
+            throw new Error("@ynode/versionify has already been registered");
         }
 
-        if (accept.includes("text/html")) {
-            return await reply
-                .header("Content-Type", "text/html")
-                .send(`<b>${pkg.name}</b> v<em>${pkg.version}</em>`);
+        const defaultOptions = {
+            path: "/version",
+        };
+
+        const log = fastify.log.child({ name: "@ynode/versionify" });
+
+        let pkg = options.pkg ?? fastify.pkg;
+
+        // If pkg is not provided, try to load it from the project's package.json
+        if (!pkg) {
+            try {
+                const pkgContents = await readFile(resolve(process.cwd(), "package.json"), "utf8");
+                pkg = JSON.parse(pkgContents);
+            } catch (err) {
+                log.error("versionify: Could not load package.json.", err);
+                // Assign default values to prevent crashes if the file is missing
+                pkg = { name: "unknown", version: "0.0.0" };
+            }
         }
 
-        if (accept.includes("text/plain")) {
-            return await reply
-                .header("Content-Type", "text/plain")
-                .send(`${pkg.name} v${pkg.version}`);
-        }
+        const finalOptions = { ...defaultOptions, ...options };
 
-        if (accept.includes("*/*")) {
-            return await reply
-                .header("Content-Type", "application/json")
-                .status(200)
-                .send({ name: pkg.name, version: pkg.version });
-        }
+        fastify.get(finalOptions.path, async (req, reply) => {
+            const accept = req.headers.accept;
 
-        return await reply.status(406).send("Not Acceptable");
-    });
+            if (accept.includes("application/json")) {
+                return await reply
+                    .header("Content-Type", "application/json")
+                    .status(200)
+                    .send({ name: pkg.name, version: pkg.version });
+            }
 
-    fastify.decorate("versionify", true);
-}, {
-    fastify: "5.x",
-    name: "@ynode/versionify",
-});
+            if (accept.includes("text/html")) {
+                return await reply
+                    .header("Content-Type", "text/html")
+                    .send(`<b>${pkg.name}</b> v<em>${pkg.version}</em>`);
+            }
+
+            if (accept.includes("text/plain")) {
+                return await reply.header("Content-Type", "text/plain").send(`${pkg.name} v${pkg.version}`);
+            }
+
+            if (accept.includes("*/*")) {
+                return await reply
+                    .header("Content-Type", "application/json")
+                    .status(200)
+                    .send({ name: pkg.name, version: pkg.version });
+            }
+
+            return await reply.status(406).send("Not Acceptable");
+        });
+
+        fastify.decorate("versionify", true);
+    },
+    {
+        fastify: "5.x",
+        name: "@ynode/versionify",
+    },
+);
