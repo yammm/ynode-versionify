@@ -52,7 +52,7 @@
         "README.md",
         "LICENSE"
     ],
-    "peerDependency": {
+    "peerDependencies": {
         "fastify": "^5.6.1"
     }
 }
