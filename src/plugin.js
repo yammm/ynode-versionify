@@ -48,6 +48,10 @@ import fp from "fastify-plugin";
  * await fastify.register(versionify, { path: "/info" });
  */
 export default fp(async function versionify(fastify, options = {}) {
+    if (typeof fastify.hasDecorator === "function" && fastify.hasDecorator("versionify")) {
+        throw new Error("@ynode/versionify has already been registered");
+    }
+
     const defaultOptions = {
         path: "/version",
     };
@@ -99,6 +103,8 @@ export default fp(async function versionify(fastify, options = {}) {
 
         return await reply.status(406).send("Not Acceptable");
     });
+
+    fastify.decorate("versionify", true);
 }, {
     fastify: "5.x",
     name: "@ynode/versionify",
