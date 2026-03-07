@@ -55,4 +55,3 @@ Now the endpoint will be available at `http://localhost:3000/info`.
 ## License
 
 This project is licensed under the [MIT Lisence](./LICENSE).
-
