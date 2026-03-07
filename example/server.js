@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+
 import versionify from "../src/plugin.js";
 
 const app = Fastify({ logger: true });

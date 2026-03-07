@@ -1,6 +1,8 @@
 import assert from "node:assert";
 import { test } from "node:test";
+
 import Fastify from "fastify";
+
 import versionify from "../src/plugin.js";
 
 test("versionify plugin exposes version route with different accept headers", async () => {
