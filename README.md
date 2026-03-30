@@ -26,6 +26,8 @@ You can pass an options object as the second argument to `register`.
 | `prefix` | `string` | `undefined` | Optional Fastify route prefix. |
 | `path` | `string` | `"/version"` | The URL path to expose the version endpoint. |
 | `pkg` | `object` | `undefined` | A `package.json` object. If not provided, the plugin will automatically load `package.json` from your project root. |
+| `cacheMaxAge` | `number` | `3600` | `Cache-Control` max-age in seconds. Set to `0` to disable. |
+| `metadata` | `object` | `undefined` | Additional static key-value pairs included in the JSON response. Keys `name` and `version` are reserved and will be ignored. |
 
 ## Basic Usage
 
@@ -48,6 +50,29 @@ await fastify.register(versionify, {
 ```
 
 Now the endpoint will be available at `http://localhost:3000/info`.
+
+### Example with Metadata and Cache Control
+
+```javascript
+import process from "node:process";
+import versionify from "@ynode/versionify";
+
+await fastify.register(versionify, {
+    metadata: { environment: "production", nodeVersion: process.version },
+    cacheMaxAge: 7200,
+});
+```
+
+The JSON response will include all metadata fields alongside `name` and `version`:
+
+```json
+{
+    "name": "my-app",
+    "version": "2.1.0",
+    "environment": "production",
+    "nodeVersion": "v22.0.0"
+}
+```
 
 ## License
 

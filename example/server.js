@@ -1,13 +1,17 @@
+import process from "node:process";
+
 import Fastify from "fastify";
 
 import versionify from "../src/plugin.js";
 
 const app = Fastify({ logger: true });
 
-// Instantly expose a `/version` endpoint providing the name and version 
+// Instantly expose a `/version` endpoint providing the name and version
 // extracted intelligently from `package.json` with REST Content-Type routing.
 await app.register(versionify, {
     path: "/version",
+    metadata: { environment: "development", nodeVersion: process.version },
+    cacheMaxAge: 7200,
 });
 
 try {
