@@ -56,7 +56,7 @@ function escapeHtml(str) {
  * @property {string} [prefix] - The URL prefix to expose the version info.
  * @property {object} [pkg] - A package.json object. If not provided, it's loaded from the project root.
  * @property {number} [cacheMaxAge=3600] - Cache-Control max-age in seconds. Set to 0 to disable.
- * @property {Object<string, string|number|boolean>} [metadata] - Additional static key-value pairs included in the JSON response.
+ * @property {object.<string, string|number|boolean>} [metadata] - Additional static key-value pairs included in the JSON response.
  */
 
 /**
@@ -103,6 +103,27 @@ function parseAcceptHeader(header) {
 }
 
 /**
+ * Checks whether an accepted media range allows a concrete response type.
+ * Supports exact matches plus type and subtype wildcards.
+ * @param {string} acceptedType - Media range from the Accept header.
+ * @param {string} responseType - Concrete response Content-Type.
+ * @returns {boolean} True when the response type satisfies the media range.
+ */
+function acceptsMediaType(acceptedType, responseType) {
+    const [acceptedMainType, acceptedSubtype] = acceptedType.split("/");
+    const [responseMainType, responseSubtype] = responseType.split("/");
+
+    if (!acceptedMainType || !acceptedSubtype || !responseMainType || !responseSubtype) {
+        return false;
+    }
+
+    return (
+        (acceptedMainType === "*" || acceptedMainType === responseMainType) &&
+        (acceptedSubtype === "*" || acceptedSubtype === responseSubtype)
+    );
+}
+
+/**
  * Content-type negotiation map. Each entry defines a media type pattern
  * and how to render the version response for that type.
  * Checked in caller order against the priority-sorted Accept list.
@@ -110,13 +131,13 @@ function parseAcceptHeader(header) {
 const CONTENT_HANDLERS = [
     {
         type: "application/json",
-        matches: (media) => media === "application/json",
+        matches: (media) => acceptsMediaType(media, "application/json"),
         render: (payload, reply) =>
             reply.header("Content-Type", "application/json").status(200).send(payload.json),
     },
     {
         type: "text/html",
-        matches: (media) => media === "text/html",
+        matches: (media) => acceptsMediaType(media, "text/html"),
         render: (payload, reply) =>
             reply
                 .header("Content-Type", "text/html")
@@ -127,7 +148,7 @@ const CONTENT_HANDLERS = [
     },
     {
         type: "text/plain",
-        matches: (media) => media === "text/plain",
+        matches: (media) => acceptsMediaType(media, "text/plain"),
         render: (payload, reply) =>
             reply
                 .header("Content-Type", "text/plain")

@@ -67,6 +67,36 @@ describe("content negotiation", () => {
         assert.deepEqual(res.json(), { name: "test-app", version: "1.2.3" });
     });
 
+    test("responds with JSON for Accept: application/*", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG });
+
+        const res = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "application/*" },
+        });
+
+        assert.equal(res.statusCode, 200);
+        assert.deepEqual(res.json(), { name: "test-app", version: "1.2.3" });
+        assert.match(res.headers["content-type"], /^application\/json/);
+    });
+
+    test("responds with HTML for Accept: text/*", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG });
+
+        const res = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "text/*" },
+        });
+
+        assert.equal(res.statusCode, 200);
+        assert.match(res.payload, /<b>test-app<\/b> v<em>1\.2\.3<\/em>/);
+        assert.equal(res.headers["content-type"], "text/html");
+    });
+
     test("responds with JSON when no Accept header is present", async () => {
         const app = Fastify();
         await app.register(versionify, { pkg: TEST_PKG });
