@@ -209,6 +209,38 @@ describe("structured metadata", () => {
         assert.equal(body.version, "1.2.3");
         assert.equal(body.extra, true);
     });
+
+    test("includes normalized build metadata under build", async () => {
+        const app = Fastify();
+        const circular = { commit: "abc123" };
+        circular.self = circular;
+        await app.register(versionify, {
+            pkg: TEST_PKG,
+            build: {
+                commit: "abc123",
+                time: new Date("2026-07-21T12:34:56.000Z"),
+                sequence: 7n,
+                circular,
+            },
+        });
+
+        const res = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "application/json" },
+        });
+
+        const body = res.json();
+        assert.deepEqual(body.build, {
+            commit: "abc123",
+            time: "2026-07-21T12:34:56.000Z",
+            sequence: "7",
+            circular: {
+                commit: "abc123",
+                self: "[Circular]",
+            },
+        });
+    });
 });
 
 describe("cache control headers", () => {
@@ -249,6 +281,98 @@ describe("cache control headers", () => {
         });
 
         assert.equal(res.headers["cache-control"], undefined);
+    });
+});
+
+describe("conditional requests", () => {
+    test("sets ETag and returns 304 for matching If-None-Match", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG });
+
+        const first = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "application/json" },
+        });
+        const etag = first.headers.etag;
+
+        assert.equal(first.statusCode, 200);
+        assert.match(etag, /^W\/"[a-f0-9]{64}"$/);
+
+        const second = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: {
+                accept: "application/json",
+                "if-none-match": etag,
+            },
+        });
+
+        assert.equal(second.statusCode, 304);
+        assert.equal(second.payload, "");
+        assert.equal(second.headers.etag, etag);
+    });
+
+    test("supports If-None-Match lists and strong/weak comparison", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG });
+
+        const first = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "application/json" },
+        });
+        const strongTag = String(first.headers.etag).replace(/^W\//, "");
+
+        const second = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: {
+                accept: "text/plain",
+                "if-none-match": `"stale", ${strongTag}`,
+            },
+        });
+
+        assert.equal(second.statusCode, 304);
+    });
+
+    test("omits ETag and conditional handling when etag is false", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG, etag: false });
+
+        const res = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: {
+                accept: "application/json",
+                "if-none-match": "*",
+            },
+        });
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.headers.etag, undefined);
+        assert.deepEqual(res.json(), { name: "test-app", version: "1.2.3" });
+    });
+
+    test("keeps unsupported Accept responses as 406 even with matching validators", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG });
+
+        const first = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "application/json" },
+        });
+        const second = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: {
+                accept: "image/png",
+                "if-none-match": first.headers.etag,
+            },
+        });
+
+        assert.equal(second.statusCode, 406);
     });
 });
 

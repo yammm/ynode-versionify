@@ -25,8 +25,9 @@ FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/
+ */
 
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import process from "node:process";
@@ -56,7 +57,9 @@ function escapeHtml(str) {
  * @property {string} [prefix] - The URL prefix to expose the version info.
  * @property {object} [pkg] - A package.json object. If not provided, it's loaded from the project root.
  * @property {number} [cacheMaxAge=3600] - Cache-Control max-age in seconds. Set to 0 to disable.
- * @property {object.<string, string|number|boolean>} [metadata] - Additional static key-value pairs included in the JSON response.
+ * @property {object.<string, *>} [metadata] - Additional static key-value pairs included in the JSON response.
+ * @property {object.<string, *>} [build] - Additional build metadata nested under `build`.
+ * @property {boolean} [etag=true] - Emit ETag and honor If-None-Match conditional requests.
  */
 
 /**
@@ -124,6 +127,113 @@ function acceptsMediaType(acceptedType, responseType) {
 }
 
 /**
+ * Converts static metadata to JSON-safe values without throwing on Dates,
+ * BigInts, circular references, or unsupported JavaScript values.
+ * @param {*} value - Candidate metadata value.
+ * @param {WeakSet<object>} [seen] - Object references already visited.
+ * @returns {*} JSON-safe value, or undefined when the value should be skipped.
+ */
+function toJsonMetadataValue(value, seen = new WeakSet()) {
+    if (value === undefined || typeof value === "function" || typeof value === "symbol") {
+        return undefined;
+    }
+    if (value instanceof Date) {
+        return value.toISOString();
+    }
+    if (typeof value === "bigint") {
+        return value.toString();
+    }
+    if (Array.isArray(value)) {
+        return value
+            .map((entry) => toJsonMetadataValue(entry, seen))
+            .filter((entry) => entry !== undefined);
+    }
+    if (value && typeof value === "object") {
+        if (seen.has(value)) {
+            return "[Circular]";
+        }
+        seen.add(value);
+        const copy = {};
+        for (const [key, entry] of Object.entries(value)) {
+            const jsonValue = toJsonMetadataValue(entry, seen);
+            if (jsonValue !== undefined) {
+                copy[key] = jsonValue;
+            }
+        }
+        seen.delete(value);
+        return copy;
+    }
+    return value;
+}
+
+/**
+ * Returns a JSON-safe metadata object or null when no fields survive.
+ * @param {object} metadata - Candidate metadata object.
+ * @returns {object|null}
+ */
+function normalizeMetadataObject(metadata) {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+        return null;
+    }
+    const normalized = toJsonMetadataValue(metadata);
+    return normalized &&
+        typeof normalized === "object" &&
+        !Array.isArray(normalized) &&
+        Object.keys(normalized).length > 0
+        ? normalized
+        : null;
+}
+
+/**
+ * Stable JSON serializer for deterministic ETag generation.
+ * @param {*} value - JSON-safe value.
+ * @returns {string}
+ */
+function stableJsonStringify(value) {
+    if (Array.isArray(value)) {
+        return `[${value.map(stableJsonStringify).join(",")}]`;
+    }
+    if (value && typeof value === "object") {
+        const entries = Object.entries(value).sort(([a], [b]) => a.localeCompare(b));
+        return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableJsonStringify(entry)}`).join(",")}}`;
+    }
+    return JSON.stringify(value);
+}
+
+/**
+ * Creates a weak ETag for the semantic version payload.
+ * @param {object} json - JSON response payload.
+ * @returns {string}
+ */
+function buildEntityTag(json) {
+    const hash = createHash("sha256").update(stableJsonStringify(json)).digest("hex");
+    return `W/"${hash}"`;
+}
+
+/**
+ * Tests whether an If-None-Match header matches the current ETag.
+ * @param {string|string[]|undefined} header - Raw request header.
+ * @param {string} entityTag - Current response ETag.
+ * @returns {boolean}
+ */
+function ifNoneMatchMatches(header, entityTag) {
+    if (!header) {
+        return false;
+    }
+
+    const values = Array.isArray(header) ? header : [header];
+    const current = entityTag.replace(/^W\//, "");
+    return values.some((value) =>
+        String(value)
+            .split(",")
+            .some((candidate) => {
+                const tag = candidate.trim();
+                return tag === "*" || tag.replace(/^W\//, "") === current;
+            }),
+    );
+}
+
+/**
  * Content-type negotiation map. Each entry defines a media type pattern
  * and how to render the version response for that type.
  * Checked in caller order against the priority-sorted Accept list.
@@ -168,20 +278,27 @@ const CONTENT_HANDLERS = [
  * Includes name, version, and any configured metadata fields.
  * @param {object} pkg - Parsed package.json.
  * @param {object} [metadata] - Additional metadata key-value pairs.
+ * @param {object} [build] - Additional build metadata.
  * @returns {{ name: string, version: string, json: object }} Payload bundle.
  */
-function buildPayload(pkg, metadata) {
+function buildPayload(pkg, metadata, build) {
     const name = pkg.name ?? "unknown";
     const version = pkg.version ?? "0.0.0";
     const json = { name, version };
 
-    if (metadata && typeof metadata === "object") {
-        for (const [key, value] of Object.entries(metadata)) {
+    const normalizedMetadata = normalizeMetadataObject(metadata);
+    if (normalizedMetadata) {
+        for (const [key, value] of Object.entries(normalizedMetadata)) {
             if (key === "name" || key === "version") {
                 continue;
             }
             json[key] = value;
         }
+    }
+
+    const buildMetadata = normalizeMetadataObject(build);
+    if (buildMetadata) {
+        json.build = buildMetadata;
     }
 
     return { name, version, json };
@@ -212,6 +329,7 @@ function buildCacheControlHeader(maxAge) {
  * await fastify.register(versionify, {
  *     path: "/info",
  *     metadata: { environment: "production", nodeVersion: process.version },
+ *     build: { commit: process.env.GIT_SHA, time: process.env.BUILD_TIME },
  *     cacheMaxAge: 7200,
  * });
  */
@@ -237,14 +355,18 @@ export default fp(
         }
 
         const routePath = options.path ?? DEFAULT_PATH;
-        const payload = buildPayload(pkg, options.metadata);
+        const payload = buildPayload(pkg, options.metadata, options.build);
         const cacheControl = buildCacheControlHeader(
             options.cacheMaxAge ?? DEFAULT_CACHE_MAX_AGE_SECONDS,
         );
+        const entityTag = options.etag === false ? null : buildEntityTag(payload.json);
 
         fastify.get(routePath, (req, reply) => {
             if (cacheControl) {
                 reply.header("Cache-Control", cacheControl);
+            }
+            if (entityTag) {
+                reply.header("ETag", entityTag);
             }
 
             const accepted = parseAcceptHeader(req.headers.accept);
@@ -253,6 +375,9 @@ export default fp(
                 for (const handler of CONTENT_HANDLERS) {
                     if (!handler.matches(media)) {
                         continue;
+                    }
+                    if (entityTag && ifNoneMatchMatches(req.headers["if-none-match"], entityTag)) {
+                        return reply.status(304).send();
                     }
                     return handler.render(payload, reply);
                 }
