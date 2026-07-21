@@ -8,6 +8,8 @@ A simple and lightweight [Fastify](https://fastify.io/) plugin to expose your ap
 
 It automatically handles content negotiation to respond with JSON, HTML, or plain text based on the client's `Accept` header.
 
+Supported media ranges include exact types and standard wildcards: `application/json` and `application/*` return JSON, `text/html` returns HTML, `text/plain` returns plain text, `text/*` returns the first supported text response, and `*/*` falls back to JSON.
+
 ## Installation
 
 Install the package and its required peer dependency, `fastify`.
