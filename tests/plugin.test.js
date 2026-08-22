@@ -111,6 +111,23 @@ describe("content negotiation", () => {
         assert.deepEqual(res.json(), { name: "test-app", version: "1.2.3" });
     });
 
+    test("inherits Fastify's automatic HEAD route with negotiated headers", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG });
+
+        const res = await app.inject({
+            method: "HEAD",
+            url: "/version",
+            headers: { accept: "text/html" },
+        });
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.payload, "");
+        assert.equal(res.headers["content-type"], "text/html; charset=utf-8");
+        assert.equal(res.headers.vary, "Accept");
+        assert.match(res.headers.etag, /^W\/"[a-f0-9]{64}"$/u);
+    });
+
     test("returns 406 for an explicitly empty Accept header", async () => {
         const app = Fastify();
         await app.register(versionify, { pkg: TEST_PKG });

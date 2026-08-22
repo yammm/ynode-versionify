@@ -12,6 +12,8 @@ Supported media ranges include exact types and standard wildcards: `application/
 
 For each representation, the most-specific matching media range determines its quality. An explicit `q=0` exclusion therefore takes precedence over a broader wildcard.
 
+Fastify automatically exposes a matching `HEAD` endpoint for the plugin's `GET` route. It returns the negotiated status and headers without a response body.
+
 ## Installation
 
 Install the package and its required peer dependency, `fastify`.
