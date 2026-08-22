@@ -1,6 +1,6 @@
 # @ynode/versionify
 
-Copyright (c) 2025 Michael Welter <me@mikinho.com>
+Copyright (c) 2026 Michael Welter <me@mikinho.com>
 
 [![npm version](https://img.shields.io/npm/v/@ynode/versionify.svg)](https://www.npmjs.com/package/@ynode/versionify) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
