@@ -56,6 +56,7 @@ function escapeHtml(str) {
  * @property {string} [path="/version"] - The URL path to expose the version info.
  * @property {string} [prefix] - URL prefix prepended to `path`. Must start with "/".
  * @property {object} [pkg] - A package.json object. If not provided, it's loaded from the project root.
+ * @property {string} [rootDir=process.cwd()] - Directory whose package.json is loaded when `pkg` is not provided.
  * @property {number} [cacheMaxAge=3600] - Cache-Control max-age in seconds. Set to 0 to disable.
  * @property {object.<string, *>} [metadata] - Additional static key-value pairs included in the JSON response. Keys `name`, `version`, and `build` are reserved and ignored.
  * @property {object.<string, *>} [build] - Additional build metadata nested under `build`.
@@ -336,12 +337,17 @@ export default fp(
 
         const log = fastify.log.child({ name: "@ynode/versionify" });
 
+        if (options.rootDir !== undefined && typeof options.rootDir !== "string") {
+            throw new TypeError("@ynode/versionify requires options.rootDir to be a string");
+        }
+
         let pkg = options.pkg ?? fastify.pkg;
 
         // If pkg is not provided, try to load it from the project's package.json
         if (!pkg) {
             try {
-                const pkgContents = await readFile(resolve(process.cwd(), "package.json"), "utf8");
+                const rootDir = options.rootDir ?? process.cwd();
+                const pkgContents = await readFile(resolve(rootDir, "package.json"), "utf8");
                 pkg = JSON.parse(pkgContents);
             } catch (error) {
                 log.error({ err: error }, "Could not load package.json, using fallback defaults");

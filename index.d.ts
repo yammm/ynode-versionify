@@ -28,6 +28,12 @@ export interface VersionifyOptions {
     pkg?: { name?: string; version?: string; [key: string]: unknown };
 
     /**
+     * Directory whose package.json is loaded when `pkg` is not provided.
+     * @default process.cwd()
+     */
+    rootDir?: string;
+
+    /**
      * Cache-Control max-age in seconds. Set to 0 to disable.
      * @default 3600
      */

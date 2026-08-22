@@ -1,6 +1,6 @@
 {
     "name": "@ynode/versionify",
-    "version": "1.4.0+336707",
+    "version": "1.4.0+336708",
     "description": "Fastify 5 plugin that exposes application name and version via a RESTful endpoint with content negotiation, cache control, and structured metadata.",
     "main": "src/plugin.js",
     "type": "module",

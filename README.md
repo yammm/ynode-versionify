@@ -28,6 +28,7 @@ You can pass an options object as the second argument to `register`.
 | `prefix` | `string` | `undefined` | Optional Fastify route prefix. |
 | `path` | `string` | `"/version"` | The URL path to expose the version endpoint. |
 | `pkg` | `object` | `undefined` | A `package.json` object. If not provided, the plugin will automatically load `package.json` from your project root. |
+| `rootDir` | `string` | `process.cwd()` | Directory whose `package.json` is loaded when `pkg` is not provided. |
 | `cacheMaxAge` | `number` | `3600` | `Cache-Control` max-age in seconds. Set to `0` to disable. |
 | `metadata` | `object` | `undefined` | Additional static key-value pairs included in the JSON response. Keys `name`, `version`, and `build` are reserved and will be ignored; build metadata belongs in the dedicated `build` option. |
 | `build` | `object` | `undefined` | Additional build metadata nested under `build` in the JSON response. Dates become ISO strings and BigInts become strings. |

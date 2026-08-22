@@ -573,22 +573,23 @@ describe("plugin options", () => {
 
     test("falls back to unknown/0.0.0 when pkg is missing and package.json is unreadable", async () => {
         const app = Fastify();
-        // Force a missing pkg by using a cwd that won't have a package.json
-        const originalCwd = process.cwd;
-        process.cwd = () => "/nonexistent-path-for-test";
 
-        try {
-            await app.register(versionify);
-            const res = await app.inject({
-                method: "GET",
-                url: "/version",
-                headers: { accept: "application/json" },
-            });
+        await app.register(versionify, { rootDir: "/nonexistent-path-for-test" });
+        const res = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "application/json" },
+        });
 
-            assert.equal(res.statusCode, 200);
-            assert.deepEqual(res.json(), { name: "unknown", version: "0.0.0" });
-        } finally {
-            process.cwd = originalCwd;
-        }
+        assert.equal(res.statusCode, 200);
+        assert.deepEqual(res.json(), { name: "unknown", version: "0.0.0" });
+    });
+
+    test("rejects a non-string rootDir", async () => {
+        const app = Fastify();
+
+        await assert.rejects(async () => {
+            await app.register(versionify, { rootDir: 42 });
+        }, /options\.rootDir to be a string/);
     });
 });
