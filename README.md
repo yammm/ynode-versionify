@@ -10,6 +10,8 @@ It automatically handles content negotiation to respond with JSON, HTML, or plai
 
 Supported media ranges include exact types and standard wildcards: `application/json` and `application/*` return JSON, `text/html` returns HTML, `text/plain` returns plain text, `text/*` returns the first supported text response, and `*/*` falls back to JSON.
 
+For each representation, the most-specific matching media range determines its quality. An explicit `q=0` exclusion therefore takes precedence over a broader wildcard.
+
 ## Installation
 
 Install the package and its required peer dependency, `fastify`.
@@ -25,13 +27,13 @@ You can pass an options object as the second argument to `register`.
 
 | Option | Type | Default | Description |
 | :-- | :-- | :-- | :-- |
-| `prefix` | `string` | `undefined` | Optional Fastify route prefix. |
-| `path` | `string` | `"/version"` | The URL path to expose the version endpoint. |
+| `prefix` | `string` | `undefined` | Optional Fastify route prefix beginning with `/`. |
+| `path` | `string` | `"/version"` | The URL path to expose the version endpoint. Must begin with `/`. |
 | `pkg` | `object` | `undefined` | A `package.json` object. If not provided, the plugin will automatically load `package.json` from your project root. |
 | `rootDir` | `string` | `process.cwd()` | Directory whose `package.json` is loaded when `pkg` is not provided. |
 | `cacheMaxAge` | `number` | `3600` | `Cache-Control` max-age in seconds. Set to `0` to disable. |
 | `metadata` | `object` | `undefined` | Additional static key-value pairs included in the JSON response. Keys `name`, `version`, and `build` are reserved and will be ignored; build metadata belongs in the dedicated `build` option. |
-| `build` | `object` | `undefined` | Additional build metadata nested under `build` in the JSON response. Dates become ISO strings and BigInts become strings. |
+| `build` | `object` | `undefined` | Additional build metadata nested under `build` in the JSON response. Valid Dates become ISO strings, invalid Dates become `null`, and BigInts become strings. |
 | `etag` | `boolean` | `true` | Emit weak ETags and honor `If-None-Match` conditional requests. |
 
 ## Basic Usage

@@ -13,12 +13,14 @@ export type VersionifyMetadataValue =
 export interface VersionifyOptions {
     /**
      * The URL path to expose the version info.
+     * Must start with "/".
      * @default "/version"
      */
     path?: string;
 
     /**
      * The URL prefix to expose the version info.
+     * Must start with "/".
      */
     prefix?: string;
 
@@ -48,7 +50,7 @@ export interface VersionifyOptions {
 
     /**
      * Additional build metadata nested under "build" in the JSON response.
-     * Dates become ISO strings and BigInts become strings.
+     * Valid Dates become ISO strings, invalid Dates become null, and BigInts become strings.
      */
     build?: Record<string, VersionifyMetadataValue>;
 

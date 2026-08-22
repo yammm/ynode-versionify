@@ -35,7 +35,7 @@ describe("content negotiation", () => {
 
         assert.equal(res.statusCode, 200);
         assert.match(res.payload, /<b>test-app<\/b> v<em>1\.2\.3<\/em>/);
-        assert.equal(res.headers["content-type"], "text/html");
+        assert.equal(res.headers["content-type"], "text/html; charset=utf-8");
     });
 
     test("responds with plain text for Accept: text/plain", async () => {
@@ -50,7 +50,7 @@ describe("content negotiation", () => {
 
         assert.equal(res.statusCode, 200);
         assert.equal(res.payload, "test-app v1.2.3");
-        assert.equal(res.headers["content-type"], "text/plain");
+        assert.equal(res.headers["content-type"], "text/plain; charset=utf-8");
     });
 
     test("responds with JSON for Accept: */*", async () => {
@@ -94,7 +94,7 @@ describe("content negotiation", () => {
 
         assert.equal(res.statusCode, 200);
         assert.match(res.payload, /<b>test-app<\/b> v<em>1\.2\.3<\/em>/);
-        assert.equal(res.headers["content-type"], "text/html");
+        assert.equal(res.headers["content-type"], "text/html; charset=utf-8");
     });
 
     test("responds with JSON when no Accept header is present", async () => {
@@ -111,6 +111,19 @@ describe("content negotiation", () => {
         assert.deepEqual(res.json(), { name: "test-app", version: "1.2.3" });
     });
 
+    test("returns 406 for an explicitly empty Accept header", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG });
+
+        const res = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "" },
+        });
+
+        assert.equal(res.statusCode, 406);
+    });
+
     test("returns 406 for unsupported Accept type without wildcard", async () => {
         const app = Fastify();
         await app.register(versionify, { pkg: TEST_PKG });
@@ -125,7 +138,7 @@ describe("content negotiation", () => {
     });
 });
 
-describe("RFC 7231 quality parameters", () => {
+describe("HTTP Accept quality parameters", () => {
     test("prefers higher quality type", async () => {
         const app = Fastify();
         await app.register(versionify, { pkg: TEST_PKG });
@@ -151,7 +164,7 @@ describe("RFC 7231 quality parameters", () => {
         });
 
         assert.equal(res.statusCode, 200);
-        assert.equal(res.headers["content-type"], "text/plain");
+        assert.equal(res.headers["content-type"], "text/plain; charset=utf-8");
     });
 
     test("rejects q=0 entries", async () => {
@@ -165,6 +178,47 @@ describe("RFC 7231 quality parameters", () => {
         });
 
         assert.equal(res.statusCode, 406);
+    });
+
+    test("honors a specific HTML exclusion over a text wildcard", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG });
+
+        const res = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "text/*;q=0.5, text/html;q=0" },
+        });
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.headers["content-type"], "text/plain; charset=utf-8");
+    });
+
+    test("honors a specific JSON exclusion over an application wildcard", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG });
+
+        const res = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "application/*;q=0.8, application/json;q=0" },
+        });
+
+        assert.equal(res.statusCode, 406);
+    });
+
+    test("treats quality parameter names case-insensitively", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG });
+
+        const res = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "text/html;Q=0, text/plain;q=0.4" },
+        });
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.headers["content-type"], "text/plain; charset=utf-8");
     });
 });
 
@@ -274,6 +328,32 @@ describe("structured metadata", () => {
                 commit: "abc123",
                 self: "[Circular]",
             },
+        });
+    });
+
+    test("normalizes circular arrays and invalid Dates without throwing", async () => {
+        const app = Fastify();
+        const circular = [];
+        circular.push(circular);
+
+        await app.register(versionify, {
+            pkg: TEST_PKG,
+            build: {
+                circular,
+                invalidDate: new Date("invalid"),
+            },
+        });
+
+        const res = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "application/json" },
+        });
+
+        assert.equal(res.statusCode, 200);
+        assert.deepEqual(res.json().build, {
+            circular: ["[Circular]"],
+            invalidDate: null,
         });
     });
 });
@@ -591,5 +671,24 @@ describe("plugin options", () => {
         await assert.rejects(async () => {
             await app.register(versionify, { rootDir: 42 });
         }, /options\.rootDir to be a string/);
+    });
+
+    test("rejects malformed public options with owned errors", async (t) => {
+        const cases = [
+            { options: { pkg: TEST_PKG, path: 42 }, message: /options\.path/ },
+            { options: { pkg: TEST_PKG, path: "version" }, message: /options\.path/ },
+            { options: { pkg: { name: 42, version: "1.0.0" } }, message: /pkg\.name/ },
+            { options: { pkg: { name: "app", version: {} } }, message: /pkg\.version/ },
+            { options: { pkg: TEST_PKG, etag: "false" }, message: /options\.etag/ },
+            { options: { pkg: TEST_PKG, metadata: [] }, message: /options\.metadata/ },
+            { options: { pkg: TEST_PKG, build: new Date() }, message: /options\.build/ },
+        ];
+
+        for (const { options, message } of cases) {
+            await t.test(JSON.stringify(options), async () => {
+                const app = Fastify();
+                await assert.rejects(async () => app.register(versionify, options), message);
+            });
+        }
     });
 });
