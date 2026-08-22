@@ -331,7 +331,7 @@ function buildCacheControlHeader(maxAge) {
  */
 export default fp(
     async function versionify(fastify, options = {}) {
-        if (typeof fastify.hasDecorator === "function" && fastify.hasDecorator("versionify")) {
+        if (fastify.hasDecorator("versionify")) {
             throw new Error("@ynode/versionify has already been registered");
         }
 
