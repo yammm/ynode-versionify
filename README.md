@@ -38,6 +38,7 @@ You can pass an options object as the second argument to `register`.
 | `build` | `object` | `undefined` | Additional build metadata nested under `build` in the JSON response. Valid Dates become ISO strings, invalid Dates become `null`, and BigInts become strings. |
 | `etag` | `boolean` | `true` | Emit weak ETags and honor `If-None-Match` conditional requests. |
 | `requireIdentity` | `boolean` | `false` | Reject registration unless the resolved package name and version are non-empty strings. |
+| `routeOptions` | `object` | `undefined` | Allowlisted Fastify `schema`, `config`, `logLevel`, `onRequest`, `preValidation`, and `preHandler` settings for the version route. |
 
 ## Basic Usage
 
@@ -70,6 +71,28 @@ await fastify.register(versionify, {
 ```
 
 With `requireIdentity: true`, package loading or JSON parsing failures reject registration with `ERR_VERSIONIFY_IDENTITY_LOAD`, and missing, empty, or whitespace-only `name` or `version` values are rejected. The default remains compatible: an unreadable project package falls back to `unknown` and `0.0.0`.
+
+Route-level authentication and documentation can be attached without wrapping the plugin:
+
+```javascript
+await fastify.register(versionify, {
+    routeOptions: {
+        schema: {
+            tags: ["operations"],
+            summary: "Application version",
+        },
+        config: { permission: "version:read" },
+        logLevel: "warn",
+        onRequest: async (request, reply) => {
+            if (!request.user?.permissions.includes("version:read")) {
+                await reply.code(403).send({ error: "Forbidden" });
+            }
+        },
+    },
+});
+```
+
+The route surface is explicitly limited to `schema`, `config`, `logLevel`, `onRequest`, `preValidation`, and `preHandler`; each hook accepts one function or an array of functions. Unknown options fail registration. `method`, `url`, and `handler` are reserved so the plugin always owns its `GET`/automatic `HEAD` contract, negotiated response, and endpoint path.
 
 ### Example with Metadata and Cache Control
 

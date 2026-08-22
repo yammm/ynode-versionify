@@ -36,6 +36,18 @@ import fp from "fastify-plugin";
 
 const DEFAULT_PATH = "/version";
 const DEFAULT_CACHE_MAX_AGE_SECONDS = 3600;
+const ALLOWED_ROUTE_OPTION_KEYS = Object.freeze([
+    "config",
+    "logLevel",
+    "onRequest",
+    "preHandler",
+    "preValidation",
+    "schema",
+]);
+const ALLOWED_ROUTE_OPTIONS = new Set(ALLOWED_ROUTE_OPTION_KEYS);
+const RESERVED_ROUTE_OPTIONS = new Set(["handler", "method", "url"]);
+const ROUTE_HOOK_OPTIONS = Object.freeze(["onRequest", "preHandler", "preValidation"]);
+const ROUTE_LOG_LEVELS = new Set(["debug", "error", "fatal", "info", "silent", "trace", "warn"]);
 
 /**
  * Checks whether a value is a plain record suitable for public options.
@@ -82,6 +94,66 @@ function validateRequiredPackageIdentity(pkg) {
         if (typeof pkg[key] !== "string" || pkg[key].trim() === "") {
             throw new TypeError(
                 `@ynode/versionify requires non-empty pkg.${key} when options.requireIdentity is true`,
+            );
+        }
+    }
+}
+
+/**
+ * Validates the explicitly allowlisted Fastify route customization surface.
+ * Core route ownership stays with the plugin, and hook arrays are checked
+ * eagerly so registration errors are deterministic.
+ *
+ * @param {*} routeOptions - Candidate Fastify route options.
+ * @returns {void}
+ * @throws {TypeError} When route options contain unsupported keys or values.
+ */
+function validateRouteOptions(routeOptions) {
+    if (routeOptions === undefined) {
+        return;
+    }
+    if (!isPlainObject(routeOptions)) {
+        throw new TypeError("@ynode/versionify requires options.routeOptions to be a plain object");
+    }
+
+    const keys = Object.keys(routeOptions).sort();
+    const reservedKey = keys.find((key) => RESERVED_ROUTE_OPTIONS.has(key));
+    if (reservedKey) {
+        throw new TypeError(
+            `@ynode/versionify reserves options.routeOptions.${reservedKey} for the version route`,
+        );
+    }
+    const unsupportedKey = keys.find((key) => !ALLOWED_ROUTE_OPTIONS.has(key));
+    if (unsupportedKey) {
+        throw new TypeError(
+            `@ynode/versionify does not support options.routeOptions.${unsupportedKey}; allowed keys: ${ALLOWED_ROUTE_OPTION_KEYS.join(", ")}`,
+        );
+    }
+
+    for (const key of ["config", "schema"]) {
+        if (routeOptions[key] !== undefined && !isPlainObject(routeOptions[key])) {
+            throw new TypeError(
+                `@ynode/versionify requires options.routeOptions.${key} to be a plain object`,
+            );
+        }
+    }
+    if (
+        routeOptions.logLevel !== undefined &&
+        (typeof routeOptions.logLevel !== "string" || !ROUTE_LOG_LEVELS.has(routeOptions.logLevel))
+    ) {
+        throw new TypeError(
+            `@ynode/versionify requires options.routeOptions.logLevel to be one of: ${[...ROUTE_LOG_LEVELS].join(", ")}`,
+        );
+    }
+    for (const key of ROUTE_HOOK_OPTIONS) {
+        const hook = routeOptions[key];
+        if (
+            hook !== undefined &&
+            typeof hook !== "function" &&
+            (!Array.isArray(hook) || !hook.every((entry) => typeof entry === "function"))
+        ) {
+            throw new TypeError(
+                `@ynode/versionify requires options.routeOptions.${key} to be a function or array of functions`,
             );
         }
     }
@@ -140,6 +212,7 @@ function validateOptions(options) {
     if (options.pkg !== undefined) {
         validatePackage(options.pkg);
     }
+    validateRouteOptions(options.routeOptions);
 }
 
 /**
@@ -167,6 +240,15 @@ function escapeHtml(str) {
  * @property {object.<string, *>} [build] - Additional build metadata nested under `build`.
  * @property {boolean} [etag=true] - Emit ETag and honor If-None-Match conditional requests.
  * @property {boolean} [requireIdentity=false] - Reject registration unless package name and version are non-empty strings.
+ * @property {VersionifyRouteOptions} [routeOptions] - Allowlisted Fastify schema, config, logging, and auth hook options for the generated route.
+ *
+ * @typedef {object} VersionifyRouteOptions
+ * @property {object} [schema] - Fastify route schema.
+ * @property {object} [config] - Fastify route context configuration.
+ * @property {"fatal"|"error"|"warn"|"info"|"debug"|"trace"|"silent"} [logLevel] - Route log level.
+ * @property {Function|Function[]} [onRequest] - Route-scoped onRequest auth hook or hooks.
+ * @property {Function|Function[]} [preValidation] - Route-scoped preValidation auth hook or hooks.
+ * @property {Function|Function[]} [preHandler] - Route-scoped preHandler auth hook or hooks.
  */
 
 /**
@@ -542,33 +624,40 @@ export default fp(
         const cacheControl = buildCacheControlHeader(cacheMaxAge);
         const representations = buildRepresentations(payload, options.etag !== false);
 
-        fastify.get(routePath, (req, reply) => {
-            const accepted = parseAcceptHeader(req.headers.accept);
-            // Every outcome varies on Accept, including 406. This keeps the
-            // negotiation key explicit if an upstream cache is configured to
-            // store error responses.
-            reply.header("Vary", "Accept");
-            const representation = selectRepresentation(accepted, representations);
-            if (!representation) {
-                return reply.status(406).send("Not Acceptable");
-            }
-
-            // Caching headers are set only after successful negotiation, so a
-            // 406 carries neither Cache-Control nor ETag.
-            if (cacheControl) {
-                reply.header("Cache-Control", cacheControl);
-            }
-            if (representation.entityTag) {
-                reply.header("ETag", representation.entityTag);
-                if (ifNoneMatchMatches(req.headers["if-none-match"], representation.entityTag)) {
-                    return reply.status(304).send();
+        fastify.route({
+            ...(options.routeOptions ?? {}),
+            method: "GET",
+            url: routePath,
+            handler(req, reply) {
+                const accepted = parseAcceptHeader(req.headers.accept);
+                // Every outcome varies on Accept, including 406. This keeps the
+                // negotiation key explicit if an upstream cache is configured to
+                // store error responses.
+                reply.header("Vary", "Accept");
+                const representation = selectRepresentation(accepted, representations);
+                if (!representation) {
+                    return reply.status(406).send("Not Acceptable");
                 }
-            }
 
-            return reply
-                .header("Content-Type", representation.contentType)
-                .status(200)
-                .send(representation.body);
+                // Caching headers are set only after successful negotiation, so a
+                // 406 carries neither Cache-Control nor ETag.
+                if (cacheControl) {
+                    reply.header("Cache-Control", cacheControl);
+                }
+                if (representation.entityTag) {
+                    reply.header("ETag", representation.entityTag);
+                    if (
+                        ifNoneMatchMatches(req.headers["if-none-match"], representation.entityTag)
+                    ) {
+                        return reply.status(304).send();
+                    }
+                }
+
+                return reply
+                    .header("Content-Type", representation.contentType)
+                    .status(200)
+                    .send(representation.body);
+            },
         });
 
         fastify.decorate("versionify", true);

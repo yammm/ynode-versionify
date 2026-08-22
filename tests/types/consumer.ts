@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import versionify, {
     type VersionifyMetadataValue,
     type VersionifyOptions,
+    type VersionifyRouteOptions,
 } from "@ynode/versionify";
 import packageMetadata from "@ynode/versionify/package.json" with { type: "json" };
 // @ts-expect-error The runtime and declarations intentionally expose only a default plugin export.
@@ -10,6 +11,22 @@ import { versionify as namedVersionify } from "@ynode/versionify";
 
 const circular: VersionifyMetadataValue[] = [];
 circular.push(circular);
+
+const routeOptions: VersionifyRouteOptions = {
+    schema: { tags: ["operations"] },
+    config: { permission: "version:read" },
+    logLevel: "warn",
+    onRequest: async (request, reply) => {
+        void request;
+        reply.header("x-version-route", "checked");
+    },
+    preValidation: [],
+    preHandler: async () => {},
+};
+const reservedRouteOptions: VersionifyRouteOptions = {
+    // @ts-expect-error Core route method ownership is intentionally reserved.
+    method: "POST",
+};
 
 const options: VersionifyOptions = {
     path: "/build/version",
@@ -23,6 +40,7 @@ const options: VersionifyOptions = {
     cacheMaxAge: 0,
     etag: true,
     requireIdentity: true,
+    routeOptions,
 };
 
 const app = Fastify();
@@ -30,5 +48,5 @@ await app.register(versionify, options);
 const registered: boolean = app.versionify;
 const packageName: string = packageMetadata.name;
 
-void [namedVersionify, packageName, registered];
+void [namedVersionify, packageName, registered, reservedRouteOptions];
 await app.close();

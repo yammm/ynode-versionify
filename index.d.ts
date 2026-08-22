@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifySchema, RouteShorthandOptions } from "fastify";
 
 export type VersionifyMetadataValue =
     | string
@@ -9,6 +9,22 @@ export type VersionifyMetadataValue =
     | Date
     | VersionifyMetadataValue[]
     | { [key: string]: VersionifyMetadataValue };
+
+/** Fastify schema plus extension fields used by documentation plugins. */
+export interface VersionifyRouteSchema extends FastifySchema {
+    [key: string]: unknown;
+}
+
+/** Allowlisted Fastify options for the generated version route. */
+export type VersionifyRouteOptions = Omit<
+    Pick<
+        RouteShorthandOptions,
+        "config" | "logLevel" | "onRequest" | "preHandler" | "preValidation" | "schema"
+    >,
+    "schema"
+> & {
+    schema?: VersionifyRouteSchema;
+};
 
 export interface VersionifyOptions {
     /**
@@ -65,6 +81,12 @@ export interface VersionifyOptions {
      * @default false
      */
     requireIdentity?: boolean;
+
+    /**
+     * Route-scoped schema, config, logging, and auth hooks. Core method, URL,
+     * and handler ownership remains reserved to the plugin.
+     */
+    routeOptions?: VersionifyRouteOptions;
 }
 
 declare module "fastify" {

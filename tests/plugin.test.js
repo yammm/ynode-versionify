@@ -647,6 +647,50 @@ describe("plugin options", () => {
         assert.equal(res.statusCode, 200);
     });
 
+    test("applies allowlisted route schema, config, logging, and auth hooks", async () => {
+        const app = Fastify();
+        let registeredRoute;
+        app.addHook("onRoute", (route) => {
+            if (route.url === "/version" && route.method === "GET") {
+                registeredRoute = route;
+            }
+        });
+        const calls = [];
+        await app.register(versionify, {
+            pkg: TEST_PKG,
+            routeOptions: {
+                schema: { tags: ["operations"], summary: "Application version" },
+                config: { permission: "version:read" },
+                logLevel: "warn",
+                async onRequest(request, reply) {
+                    calls.push(["onRequest", request.routeOptions.config.permission]);
+                    if (request.headers.authorization !== "Bearer allowed") {
+                        return reply.status(401).send({ error: "Unauthorized" });
+                    }
+                },
+                preValidation: [async () => calls.push(["preValidation"])],
+                preHandler: async () => calls.push(["preHandler"]),
+            },
+        });
+
+        const denied = await app.inject({ method: "GET", url: "/version" });
+        assert.equal(denied.statusCode, 401);
+        assert.deepEqual(calls, [["onRequest", "version:read"]]);
+
+        calls.length = 0;
+        const allowed = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "application/json", authorization: "Bearer allowed" },
+        });
+        assert.equal(allowed.statusCode, 200);
+        assert.deepEqual(calls, [["onRequest", "version:read"], ["preValidation"], ["preHandler"]]);
+        assert.deepEqual(registeredRoute.schema.tags, ["operations"]);
+        assert.equal(registeredRoute.schema.summary, "Application version");
+        assert.deepEqual(registeredRoute.config, { permission: "version:read" });
+        assert.equal(registeredRoute.logLevel, "warn");
+    });
+
     test("rejects a prefix that does not start with a slash", async () => {
         const app = Fastify();
 
@@ -787,6 +831,43 @@ describe("plugin options", () => {
             {
                 options: { pkg: TEST_PKG, requireIdentity: "yes" },
                 message: /options\.requireIdentity/,
+            },
+            { options: { pkg: TEST_PKG, routeOptions: [] }, message: /routeOptions/ },
+            {
+                options: { pkg: TEST_PKG, routeOptions: { method: "POST" } },
+                message: /reserves options\.routeOptions\.method/,
+            },
+            {
+                options: { pkg: TEST_PKG, routeOptions: { url: "/other" } },
+                message: /reserves options\.routeOptions\.url/,
+            },
+            {
+                options: { pkg: TEST_PKG, routeOptions: { handler() {} } },
+                message: /reserves options\.routeOptions\.handler/,
+            },
+            {
+                options: { pkg: TEST_PKG, routeOptions: { bodyLimit: 1 } },
+                message: /does not support options\.routeOptions\.bodyLimit/,
+            },
+            {
+                options: { pkg: TEST_PKG, routeOptions: { schema: [] } },
+                message: /routeOptions\.schema to be a plain object/,
+            },
+            {
+                options: { pkg: TEST_PKG, routeOptions: { config: [] } },
+                message: /routeOptions\.config to be a plain object/,
+            },
+            {
+                options: { pkg: TEST_PKG, routeOptions: { logLevel: "verbose" } },
+                message: /routeOptions\.logLevel to be one of/,
+            },
+            {
+                options: { pkg: TEST_PKG, routeOptions: { onRequest: true } },
+                message: /routeOptions\.onRequest to be a function or array of functions/,
+            },
+            {
+                options: { pkg: TEST_PKG, routeOptions: { preHandler: [() => {}, false] } },
+                message: /routeOptions\.preHandler to be a function or array of functions/,
             },
             { options: { pkg: TEST_PKG, metadata: [] }, message: /options\.metadata/ },
             { options: { pkg: TEST_PKG, build: new Date() }, message: /options\.build/ },
