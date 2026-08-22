@@ -509,6 +509,10 @@ export default fp(
 
         fastify.get(routePath, (req, reply) => {
             const accepted = parseAcceptHeader(req.headers.accept);
+            // Every outcome varies on Accept, including 406. This keeps the
+            // negotiation key explicit if an upstream cache is configured to
+            // store error responses.
+            reply.header("Vary", "Accept");
             const representation = selectRepresentation(accepted, representations);
             if (!representation) {
                 return reply.status(406).send("Not Acceptable");
@@ -516,7 +520,6 @@ export default fp(
 
             // Caching headers are set only after successful negotiation, so a
             // 406 carries neither Cache-Control nor ETag.
-            reply.header("Vary", "Accept");
             if (cacheControl) {
                 reply.header("Cache-Control", cacheControl);
             }

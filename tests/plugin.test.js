@@ -534,6 +534,7 @@ describe("conditional requests", () => {
         });
 
         assert.equal(res.statusCode, 406);
+        assert.equal(res.headers.vary, "Accept");
         assert.equal(res.headers["cache-control"], undefined);
         assert.equal(res.headers.etag, undefined);
     });
