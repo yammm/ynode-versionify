@@ -185,28 +185,13 @@ function normalizeMetadataObject(metadata) {
 }
 
 /**
- * Stable JSON serializer for deterministic ETag generation.
- * @param {*} value - JSON-safe value.
+ * Creates a weak ETag over one rendered response representation, so every
+ * negotiated content type carries its own validator.
+ * @param {string} body - Rendered response body.
  * @returns {string}
  */
-function stableJsonStringify(value) {
-    if (Array.isArray(value)) {
-        return `[${value.map(stableJsonStringify).join(",")}]`;
-    }
-    if (value && typeof value === "object") {
-        const entries = Object.entries(value).sort(([a], [b]) => a.localeCompare(b));
-        return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableJsonStringify(entry)}`).join(",")}}`;
-    }
-    return JSON.stringify(value);
-}
-
-/**
- * Creates a weak ETag for the semantic version payload.
- * @param {object} json - JSON response payload.
- * @returns {string}
- */
-function buildEntityTag(json) {
-    const hash = createHash("sha256").update(stableJsonStringify(json)).digest("hex");
+function buildEntityTag(body) {
+    const hash = createHash("sha256").update(body).digest("hex");
     return `W/"${hash}"`;
 }
 
@@ -235,43 +220,51 @@ function ifNoneMatchMatches(header, entityTag) {
 
 /**
  * Content-type negotiation map. Each entry defines a media type pattern
- * and how to render the version response for that type.
+ * and how to render the version response body for that type.
  * Checked in caller order against the priority-sorted Accept list.
  */
 const CONTENT_HANDLERS = [
     {
-        type: "application/json",
+        contentType: "application/json",
         matches: (media) => acceptsMediaType(media, "application/json"),
-        render: (payload, reply) =>
-            reply.header("Content-Type", "application/json").status(200).send(payload.json),
+        renderBody: (payload) => JSON.stringify(payload.json),
     },
     {
-        type: "text/html",
+        contentType: "text/html",
         matches: (media) => acceptsMediaType(media, "text/html"),
-        render: (payload, reply) =>
-            reply
-                .header("Content-Type", "text/html")
-                .status(200)
-                .send(
-                    `<b>${escapeHtml(payload.name)}</b> v<em>${escapeHtml(payload.version)}</em>`,
-                ),
+        renderBody: (payload) =>
+            `<b>${escapeHtml(payload.name)}</b> v<em>${escapeHtml(payload.version)}</em>`,
     },
     {
-        type: "text/plain",
+        contentType: "text/plain",
         matches: (media) => acceptsMediaType(media, "text/plain"),
-        render: (payload, reply) =>
-            reply
-                .header("Content-Type", "text/plain")
-                .status(200)
-                .send(`${payload.name} v${payload.version}`),
+        renderBody: (payload) => `${payload.name} v${payload.version}`,
     },
     {
-        type: "*/*",
+        contentType: "application/json",
         matches: (media) => media === "*/*",
-        render: (payload, reply) =>
-            reply.header("Content-Type", "application/json").status(200).send(payload.json),
+        renderBody: (payload) => JSON.stringify(payload.json),
     },
 ];
+
+/**
+ * Renders every negotiable representation once at registration time, pairing
+ * each rendered body with its own entity tag.
+ * @param {{ name: string, version: string, json: object }} payload - Payload bundle.
+ * @param {boolean} etagEnabled - Whether entity tags should be generated.
+ * @returns {Array<{ matches: function(string): boolean, contentType: string, body: string, entityTag: string|null }>}
+ */
+function buildRepresentations(payload, etagEnabled) {
+    return CONTENT_HANDLERS.map((handler) => {
+        const body = handler.renderBody(payload);
+        return {
+            matches: handler.matches,
+            contentType: handler.contentType,
+            body,
+            entityTag: etagEnabled ? buildEntityTag(body) : null,
+        };
+    });
+}
 
 /**
  * Builds the static JSON response payload once at registration time.
@@ -371,27 +364,40 @@ export default fp(
         const cacheControl = buildCacheControlHeader(
             options.cacheMaxAge ?? DEFAULT_CACHE_MAX_AGE_SECONDS,
         );
-        const entityTag = options.etag === false ? null : buildEntityTag(payload.json);
+        const representations = buildRepresentations(payload, options.etag !== false);
 
         fastify.get(routePath, (req, reply) => {
-            if (cacheControl) {
-                reply.header("Cache-Control", cacheControl);
-            }
-            if (entityTag) {
-                reply.header("ETag", entityTag);
-            }
-
             const accepted = parseAcceptHeader(req.headers.accept);
 
             for (const media of accepted) {
-                for (const handler of CONTENT_HANDLERS) {
-                    if (!handler.matches(media)) {
+                for (const representation of representations) {
+                    if (!representation.matches(media)) {
                         continue;
                     }
-                    if (entityTag && ifNoneMatchMatches(req.headers["if-none-match"], entityTag)) {
-                        return reply.status(304).send();
+
+                    // Caching headers are set only after successful negotiation,
+                    // so a 406 carries neither Cache-Control nor ETag. Vary tells
+                    // shared caches each Accept value is its own cache entry.
+                    reply.header("Vary", "Accept");
+                    if (cacheControl) {
+                        reply.header("Cache-Control", cacheControl);
                     }
-                    return handler.render(payload, reply);
+                    if (representation.entityTag) {
+                        reply.header("ETag", representation.entityTag);
+                        if (
+                            ifNoneMatchMatches(
+                                req.headers["if-none-match"],
+                                representation.entityTag,
+                            )
+                        ) {
+                            return reply.status(304).send();
+                        }
+                    }
+
+                    return reply
+                        .header("Content-Type", representation.contentType)
+                        .status(200)
+                        .send(representation.body);
                 }
             }
 

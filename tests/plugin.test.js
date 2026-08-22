@@ -328,12 +328,83 @@ describe("conditional requests", () => {
             method: "GET",
             url: "/version",
             headers: {
-                accept: "text/plain",
+                accept: "application/json",
                 "if-none-match": `"stale", ${strongTag}`,
             },
         });
 
         assert.equal(second.statusCode, 304);
+    });
+
+    test("issues a distinct ETag per representation and ignores cross-representation validators", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG });
+
+        const json = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "application/json" },
+        });
+        const plain = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "text/plain" },
+        });
+
+        assert.equal(json.statusCode, 200);
+        assert.equal(plain.statusCode, 200);
+        assert.notEqual(json.headers.etag, plain.headers.etag);
+
+        // A validator from the JSON representation must not shortcut the
+        // plain-text representation to 304.
+        const crossed = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: {
+                accept: "text/plain",
+                "if-none-match": json.headers.etag,
+            },
+        });
+
+        assert.equal(crossed.statusCode, 200);
+        assert.equal(crossed.payload, "test-app v1.2.3");
+        assert.equal(crossed.headers.etag, plain.headers.etag);
+    });
+
+    test("sends Vary: Accept on negotiated responses", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG });
+
+        const ok = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "text/html" },
+        });
+        const notModified = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "text/html", "if-none-match": ok.headers.etag },
+        });
+
+        assert.equal(ok.statusCode, 200);
+        assert.equal(ok.headers.vary, "Accept");
+        assert.equal(notModified.statusCode, 304);
+        assert.equal(notModified.headers.vary, "Accept");
+    });
+
+    test("omits caching headers on 406 responses", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG });
+
+        const res = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "image/png" },
+        });
+
+        assert.equal(res.statusCode, 406);
+        assert.equal(res.headers["cache-control"], undefined);
+        assert.equal(res.headers.etag, undefined);
     });
 
     test("omits ETag and conditional handling when etag is false", async () => {
