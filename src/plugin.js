@@ -360,10 +360,15 @@ export default fp(
         // prefixing, so the prefix is applied to the route path directly.
         const prefix = (options.prefix ?? "").replace(/\/+$/, "");
         const routePath = `${prefix}${options.path ?? DEFAULT_PATH}`;
+        const cacheMaxAge = options.cacheMaxAge ?? DEFAULT_CACHE_MAX_AGE_SECONDS;
+        if (typeof cacheMaxAge !== "number" || !Number.isFinite(cacheMaxAge) || cacheMaxAge < 0) {
+            throw new TypeError(
+                "@ynode/versionify requires options.cacheMaxAge to be a non-negative finite number",
+            );
+        }
+
         const payload = buildPayload(pkg, options.metadata, options.build);
-        const cacheControl = buildCacheControlHeader(
-            options.cacheMaxAge ?? DEFAULT_CACHE_MAX_AGE_SECONDS,
-        );
+        const cacheControl = buildCacheControlHeader(cacheMaxAge);
         const representations = buildRepresentations(payload, options.etag !== false);
 
         fastify.get(routePath, (req, reply) => {

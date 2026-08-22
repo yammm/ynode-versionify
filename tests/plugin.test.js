@@ -270,6 +270,22 @@ describe("cache control headers", () => {
         assert.equal(res.headers["cache-control"], "public, max-age=120");
     });
 
+    test("rejects a non-numeric cacheMaxAge at registration", async () => {
+        const app = Fastify();
+
+        await assert.rejects(async () => {
+            await app.register(versionify, { pkg: TEST_PKG, cacheMaxAge: "3600" });
+        }, TypeError);
+    });
+
+    test("rejects a negative cacheMaxAge at registration", async () => {
+        const app = Fastify();
+
+        await assert.rejects(async () => {
+            await app.register(versionify, { pkg: TEST_PKG, cacheMaxAge: -1 });
+        }, /options\.cacheMaxAge to be a non-negative finite number/);
+    });
+
     test("omits Cache-Control when cacheMaxAge is 0", async () => {
         const app = Fastify();
         await app.register(versionify, { pkg: TEST_PKG, cacheMaxAge: 0 });
