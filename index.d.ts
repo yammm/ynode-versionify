@@ -35,7 +35,8 @@ export interface VersionifyOptions {
 
     /**
      * Additional static key-value pairs included in the JSON response.
-     * Keys "name" and "version" are reserved and will be ignored.
+     * Keys "name", "version", and "build" are reserved and will be ignored;
+     * build metadata belongs in the dedicated `build` option.
      */
     metadata?: Record<string, VersionifyMetadataValue>;
 

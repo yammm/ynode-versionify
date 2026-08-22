@@ -210,6 +210,41 @@ describe("structured metadata", () => {
         assert.equal(body.extra, true);
     });
 
+    test("reserves the build key for the build option", async () => {
+        const app = Fastify();
+        await app.register(versionify, {
+            pkg: TEST_PKG,
+            metadata: { build: { commit: "smuggled" }, extra: true },
+            build: { commit: "abc123" },
+        });
+
+        const res = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "application/json" },
+        });
+
+        const body = res.json();
+        assert.deepEqual(body.build, { commit: "abc123" });
+        assert.equal(body.extra, true);
+    });
+
+    test("drops a metadata build key even without the build option", async () => {
+        const app = Fastify();
+        await app.register(versionify, {
+            pkg: TEST_PKG,
+            metadata: { build: { commit: "smuggled" } },
+        });
+
+        const res = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "application/json" },
+        });
+
+        assert.deepEqual(res.json(), { name: "test-app", version: "1.2.3" });
+    });
+
     test("includes normalized build metadata under build", async () => {
         const app = Fastify();
         const circular = { commit: "abc123" };

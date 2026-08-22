@@ -57,7 +57,7 @@ function escapeHtml(str) {
  * @property {string} [prefix] - URL prefix prepended to `path`. Must start with "/".
  * @property {object} [pkg] - A package.json object. If not provided, it's loaded from the project root.
  * @property {number} [cacheMaxAge=3600] - Cache-Control max-age in seconds. Set to 0 to disable.
- * @property {object.<string, *>} [metadata] - Additional static key-value pairs included in the JSON response.
+ * @property {object.<string, *>} [metadata] - Additional static key-value pairs included in the JSON response. Keys `name`, `version`, and `build` are reserved and ignored.
  * @property {object.<string, *>} [build] - Additional build metadata nested under `build`.
  * @property {boolean} [etag=true] - Emit ETag and honor If-None-Match conditional requests.
  */
@@ -282,7 +282,9 @@ function buildPayload(pkg, metadata, build) {
     const normalizedMetadata = normalizeMetadataObject(metadata);
     if (normalizedMetadata) {
         for (const [key, value] of Object.entries(normalizedMetadata)) {
-            if (key === "name" || key === "version") {
+            // `build` is reserved for the dedicated option below so a metadata
+            // copy can neither clobber it nor leak through as a top-level key.
+            if (key === "name" || key === "version" || key === "build") {
                 continue;
             }
             json[key] = value;
