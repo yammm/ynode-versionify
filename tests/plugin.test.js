@@ -391,6 +391,55 @@ describe("plugin options", () => {
         assert.deepEqual(res.json(), { name: "test-app", version: "1.2.3" });
     });
 
+    test("serves the route under a prefix", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG, prefix: "/~" });
+
+        const prefixed = await app.inject({
+            method: "GET",
+            url: "/~/version",
+            headers: { accept: "application/json" },
+        });
+        const unprefixed = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "application/json" },
+        });
+
+        assert.equal(prefixed.statusCode, 200);
+        assert.deepEqual(prefixed.json(), { name: "test-app", version: "1.2.3" });
+        assert.equal(unprefixed.statusCode, 404);
+    });
+
+    test("serves the default path when no prefix is given", async () => {
+        const app = Fastify();
+        await app.register(versionify, { pkg: TEST_PKG });
+
+        const res = await app.inject({
+            method: "GET",
+            url: "/version",
+            headers: { accept: "application/json" },
+        });
+
+        assert.equal(res.statusCode, 200);
+    });
+
+    test("rejects a prefix that does not start with a slash", async () => {
+        const app = Fastify();
+
+        await assert.rejects(async () => {
+            await app.register(versionify, { pkg: TEST_PKG, prefix: "~" });
+        }, /options\.prefix to be a string starting with "\/"/);
+    });
+
+    test("rejects a non-string prefix", async () => {
+        const app = Fastify();
+
+        await assert.rejects(async () => {
+            await app.register(versionify, { pkg: TEST_PKG, prefix: 7 });
+        }, TypeError);
+    });
+
     test("rejects duplicate registration", async () => {
         const app = Fastify();
         await app.register(versionify, { pkg: TEST_PKG });

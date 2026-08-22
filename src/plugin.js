@@ -54,7 +54,7 @@ function escapeHtml(str) {
 /**
  * @typedef {object} VersionifyOptions
  * @property {string} [path="/version"] - The URL path to expose the version info.
- * @property {string} [prefix] - The URL prefix to expose the version info.
+ * @property {string} [prefix] - URL prefix prepended to `path`. Must start with "/".
  * @property {object} [pkg] - A package.json object. If not provided, it's loaded from the project root.
  * @property {number} [cacheMaxAge=3600] - Cache-Control max-age in seconds. Set to 0 to disable.
  * @property {object.<string, *>} [metadata] - Additional static key-value pairs included in the JSON response.
@@ -354,7 +354,19 @@ export default fp(
             }
         }
 
-        const routePath = options.path ?? DEFAULT_PATH;
+        if (
+            options.prefix !== undefined &&
+            (typeof options.prefix !== "string" || !options.prefix.startsWith("/"))
+        ) {
+            throw new TypeError(
+                '@ynode/versionify requires options.prefix to be a string starting with "/"',
+            );
+        }
+
+        // fastify-plugin's skip-override discards Fastify's own register-time
+        // prefixing, so the prefix is applied to the route path directly.
+        const prefix = (options.prefix ?? "").replace(/\/+$/, "");
+        const routePath = `${prefix}${options.path ?? DEFAULT_PATH}`;
         const payload = buildPayload(pkg, options.metadata, options.build);
         const cacheControl = buildCacheControlHeader(
             options.cacheMaxAge ?? DEFAULT_CACHE_MAX_AGE_SECONDS,
