@@ -69,6 +69,25 @@ function validatePackage(pkg) {
 }
 
 /**
+ * Requires non-empty application identity fields for strict registrations.
+ * Values are validated after the normal package shape checks and are not
+ * trimmed or rewritten.
+ *
+ * @param {object} pkg - Validated package metadata.
+ * @returns {void}
+ * @throws {TypeError} When name or version is missing or empty.
+ */
+function validateRequiredPackageIdentity(pkg) {
+    for (const key of ["name", "version"]) {
+        if (typeof pkg[key] !== "string" || pkg[key].trim() === "") {
+            throw new TypeError(
+                `@ynode/versionify requires non-empty pkg.${key} when options.requireIdentity is true`,
+            );
+        }
+    }
+}
+
+/**
  * Validates all supported plugin options at the registration boundary.
  * @param {*} options - Candidate plugin options.
  * @returns {void}
@@ -110,6 +129,9 @@ function validateOptions(options) {
     if (options.etag !== undefined && typeof options.etag !== "boolean") {
         throw new TypeError("@ynode/versionify requires options.etag to be a boolean");
     }
+    if (options.requireIdentity !== undefined && typeof options.requireIdentity !== "boolean") {
+        throw new TypeError("@ynode/versionify requires options.requireIdentity to be a boolean");
+    }
     for (const key of ["metadata", "build"]) {
         if (options[key] !== undefined && !isPlainObject(options[key])) {
             throw new TypeError(`@ynode/versionify requires options.${key} to be a plain object`);
@@ -144,6 +166,7 @@ function escapeHtml(str) {
  * @property {object.<string, *>} [metadata] - Additional static key-value pairs included in the JSON response. Keys `name`, `version`, and `build` are reserved and ignored.
  * @property {object.<string, *>} [build] - Additional build metadata nested under `build`.
  * @property {boolean} [etag=true] - Emit ETag and honor If-None-Match conditional requests.
+ * @property {boolean} [requireIdentity=false] - Reject registration unless package name and version are non-empty strings.
  */
 
 /**
@@ -486,16 +509,28 @@ export default fp(
 
         // If pkg is not provided, try to load it from the project's package.json
         if (!pkg) {
+            const rootDir = options.rootDir ?? process.cwd();
+            const packagePath = resolve(rootDir, "package.json");
             try {
-                const rootDir = options.rootDir ?? process.cwd();
-                const pkgContents = await readFile(resolve(rootDir, "package.json"), "utf8");
+                const pkgContents = await readFile(packagePath, "utf8");
                 pkg = JSON.parse(pkgContents);
             } catch (error) {
+                if (options.requireIdentity) {
+                    const identityError = new Error(
+                        `@ynode/versionify could not load required package identity from ${packagePath}`,
+                        { cause: error },
+                    );
+                    identityError.code = "ERR_VERSIONIFY_IDENTITY_LOAD";
+                    throw identityError;
+                }
                 log.error({ err: error }, "Could not load package.json, using fallback defaults");
                 pkg = { name: "unknown", version: "0.0.0" };
             }
         }
         validatePackage(pkg);
+        if (options.requireIdentity) {
+            validateRequiredPackageIdentity(pkg);
+        }
 
         // fastify-plugin's skip-override discards Fastify's own register-time
         // prefixing, so the prefix is applied to the route path directly.

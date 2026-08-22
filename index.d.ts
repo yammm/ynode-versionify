@@ -59,6 +59,12 @@ export interface VersionifyOptions {
      * @default true
      */
     etag?: boolean;
+
+    /**
+     * Reject registration unless package name and version are non-empty strings.
+     * @default false
+     */
+    requireIdentity?: boolean;
 }
 
 declare module "fastify" {

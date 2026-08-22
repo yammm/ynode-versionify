@@ -22,6 +22,7 @@ const options: VersionifyOptions = {
     },
     cacheMaxAge: 0,
     etag: true,
+    requireIdentity: true,
 };
 
 const app = Fastify();

@@ -37,6 +37,7 @@ You can pass an options object as the second argument to `register`.
 | `metadata` | `object` | `undefined` | Additional static key-value pairs included in the JSON response. Keys `name`, `version`, and `build` are reserved and will be ignored; build metadata belongs in the dedicated `build` option. |
 | `build` | `object` | `undefined` | Additional build metadata nested under `build` in the JSON response. Valid Dates become ISO strings, invalid Dates become `null`, and BigInts become strings. |
 | `etag` | `boolean` | `true` | Emit weak ETags and honor `If-None-Match` conditional requests. |
+| `requireIdentity` | `boolean` | `false` | Reject registration unless the resolved package name and version are non-empty strings. |
 
 ## Basic Usage
 
@@ -59,6 +60,16 @@ await fastify.register(versionify, {
 ```
 
 Now the endpoint will be available at `http://localhost:3000/info`.
+
+For deployments where fallback identity would hide a packaging error, enable strict identity validation:
+
+```javascript
+await fastify.register(versionify, {
+    requireIdentity: true,
+});
+```
+
+With `requireIdentity: true`, package loading or JSON parsing failures reject registration with `ERR_VERSIONIFY_IDENTITY_LOAD`, and missing, empty, or whitespace-only `name` or `version` values are rejected. The default remains compatible: an unreadable project package falls back to `unknown` and `0.0.0`.
 
 ### Example with Metadata and Cache Control
 

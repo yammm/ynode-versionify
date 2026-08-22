@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, test } from "node:test";
 
 import Fastify from "fastify";
@@ -683,6 +686,89 @@ describe("plugin options", () => {
         assert.deepEqual(res.json(), { name: "unknown", version: "0.0.0" });
     });
 
+    test("requireIdentity accepts complete package metadata from every supported source", async (t) => {
+        const explicit = Fastify();
+        await explicit.register(versionify, { pkg: TEST_PKG, requireIdentity: true });
+        assert.deepEqual(
+            (
+                await explicit.inject({
+                    method: "GET",
+                    url: "/version",
+                    headers: { accept: "application/json" },
+                })
+            ).json(),
+            TEST_PKG,
+        );
+
+        const decorated = Fastify();
+        decorated.decorate("pkg", TEST_PKG);
+        await decorated.register(versionify, { requireIdentity: true });
+
+        const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "versionify-identity-"));
+        t.after(async () => fs.rm(rootDir, { recursive: true, force: true }));
+        await fs.writeFile(
+            path.join(rootDir, "package.json"),
+            JSON.stringify({ name: "loaded-app", version: "2.0.0" }),
+            "utf8",
+        );
+        const loaded = Fastify();
+        await loaded.register(versionify, { requireIdentity: true, rootDir });
+        assert.deepEqual(
+            (
+                await loaded.inject({
+                    method: "GET",
+                    url: "/version",
+                    headers: { accept: "application/json" },
+                })
+            ).json(),
+            { name: "loaded-app", version: "2.0.0" },
+        );
+    });
+
+    test("requireIdentity rejects missing, empty, and whitespace-only identity fields", async (t) => {
+        const cases = [
+            { pkg: { version: "1.0.0" }, field: "name" },
+            { pkg: { name: "", version: "1.0.0" }, field: "name" },
+            { pkg: { name: " \t", version: "1.0.0" }, field: "name" },
+            { pkg: { name: "app" }, field: "version" },
+            { pkg: { name: "app", version: "" }, field: "version" },
+            { pkg: { name: "app", version: "\n" }, field: "version" },
+        ];
+
+        for (const { pkg, field } of cases) {
+            await t.test(`${field}: ${JSON.stringify(pkg[field])}`, async () => {
+                const app = Fastify();
+                await assert.rejects(
+                    async () => app.register(versionify, { pkg, requireIdentity: true }),
+                    new RegExp(`requires non-empty pkg\\.${field}`),
+                );
+            });
+        }
+    });
+
+    test("requireIdentity rejects package read and JSON parse failures with a coded cause", async (t) => {
+        const missing = Fastify();
+        await assert.rejects(
+            async () =>
+                missing.register(versionify, {
+                    requireIdentity: true,
+                    rootDir: "/nonexistent-versionify-identity",
+                }),
+            (error) =>
+                error.code === "ERR_VERSIONIFY_IDENTITY_LOAD" && error.cause?.code === "ENOENT",
+        );
+
+        const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "versionify-invalid-identity-"));
+        t.after(async () => fs.rm(rootDir, { recursive: true, force: true }));
+        await fs.writeFile(path.join(rootDir, "package.json"), "{ invalid", "utf8");
+        const invalid = Fastify();
+        await assert.rejects(
+            async () => invalid.register(versionify, { requireIdentity: true, rootDir }),
+            (error) =>
+                error.code === "ERR_VERSIONIFY_IDENTITY_LOAD" && error.cause instanceof SyntaxError,
+        );
+    });
+
     test("rejects a non-string rootDir", async () => {
         const app = Fastify();
 
@@ -698,6 +784,10 @@ describe("plugin options", () => {
             { options: { pkg: { name: 42, version: "1.0.0" } }, message: /pkg\.name/ },
             { options: { pkg: { name: "app", version: {} } }, message: /pkg\.version/ },
             { options: { pkg: TEST_PKG, etag: "false" }, message: /options\.etag/ },
+            {
+                options: { pkg: TEST_PKG, requireIdentity: "yes" },
+                message: /options\.requireIdentity/,
+            },
             { options: { pkg: TEST_PKG, metadata: [] }, message: /options\.metadata/ },
             { options: { pkg: TEST_PKG, build: new Date() }, message: /options\.build/ },
         ];
