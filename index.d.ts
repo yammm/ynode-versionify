@@ -61,5 +61,5 @@ declare module "fastify" {
     }
 }
 
-export const versionify: FastifyPluginAsync<VersionifyOptions>;
+declare const versionify: FastifyPluginAsync<VersionifyOptions>;
 export default versionify;
